@@ -1,243 +1,168 @@
-require("dotenv").config()
+const { 
+Client, 
+GatewayIntentBits, 
+Partials, 
+SlashCommandBuilder, 
+REST, 
+Routes, 
+PermissionsBitField 
+} = require("discord.js");
 
-const {
-Client,
-GatewayIntentBits,
-PermissionsBitField,
-REST,
-Routes,
-SlashCommandBuilder
-} = require("discord.js")
+const TOKEN = "SEU_TOKEN";
+const CLIENT_ID = "SEU_CLIENT_ID";
 
 const client = new Client({
-intents:[
+intents: [
 GatewayIntentBits.Guilds,
 GatewayIntentBits.GuildMessages,
 GatewayIntentBits.MessageContent,
 GatewayIntentBits.GuildMembers
-]
-})
+],
+partials: [Partials.Channel]
+});
 
-const config = {}
+let config = {
+logChannel: null
+};
+
+const bannedWords = [
+"estrupado",
+"estrupada"
+];
 
 const commands = [
 
 new SlashCommandBuilder()
-.setName("ping")
-.setDescription("Ver latência"),
-
-new SlashCommandBuilder()
-.setName("ban")
-.setDescription("Banir usuário")
-.addUserOption(o=>o.setName("usuario").setDescription("Usuário").setRequired(true))
-.addStringOption(o=>o.setName("motivo").setDescription("Motivo")),
+.setName("config-logs")
+.setDescription("Definir canal de logs")
+.addChannelOption(option =>
+option.setName("canal")
+.setDescription("Canal de logs")
+.setRequired(true)
+),
 
 new SlashCommandBuilder()
 .setName("mute")
-.setDescription("Mutar usuário")
-.addUserOption(o=>o.setName("usuario").setDescription("Usuário").setRequired(true))
-.addIntegerOption(o=>o.setName("tempo").setDescription("Tempo em minutos").setRequired(true))
-.addStringOption(o=>o.setName("motivo").setDescription("Motivo")),
-
-new SlashCommandBuilder()
-.setName("unmute")
-.setDescription("Desmutar usuário")
-.addUserOption(o=>o.setName("usuario").setDescription("Usuário").setRequired(true)),
-
-new SlashCommandBuilder()
-.setName("config")
-.setDescription("Configurar bot")
-.addSubcommand(s=>
-s.setName("logs")
-.setDescription("Definir canal de logs")
-.addChannelOption(o=>
-o.setName("canal")
-.setDescription("Canal de logs")
+.setDescription("Mutar um usuário")
+.addUserOption(option =>
+option.setName("usuario")
+.setDescription("Usuário para mutar")
 .setRequired(true)
-))
-
-].map(c=>c.toJSON())
-
-async function registrar(){
-
-const rest = new REST({version:"10"}).setToken(process.env.TOKEN)
-
-await rest.put(
-Routes.applicationCommands(process.env.CLIENT_ID),
-{body:commands}
+)
+.addIntegerOption(option =>
+option.setName("tempo")
+.setDescription("Tempo em minutos")
+.setRequired(true)
 )
 
-}
+].map(cmd => cmd.toJSON());
 
-client.once("ready", async ()=>{
 
-console.log("Bot online")
+async function registerCommands() {
 
-await registrar()
+const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-})
+try {
 
-client.on("interactionCreate", async interaction=>{
+console.log("Registrando comandos...");
 
-if(!interaction.isChatInputCommand()) return
+await rest.put(
+Routes.applicationCommands(CLIENT_ID),
+{ body: commands }
+);
 
-const guildId = interaction.guild.id
+console.log("Comandos registrados automaticamente");
 
-if(interaction.commandName === "ping"){
-return interaction.reply("🏓 Pong!")
-}
-
-if(interaction.commandName === "config"){
-
-if(!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
-return interaction.reply({content:"Sem permissão",ephemeral:true})
-
-const canal = interaction.options.getChannel("canal")
-
-config[guildId] = {
-logChannel: canal.id
-}
-
-interaction.reply(`✅ Canal de logs definido: ${canal}`)
-}
-
-if(interaction.commandName === "ban"){
-
-if(!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
-return interaction.reply({content:"Sem permissão",ephemeral:true})
-
-const user = interaction.options.getUser("usuario")
-const motivo = interaction.options.getString("motivo") || "Sem motivo"
-
-const member = interaction.guild.members.cache.get(user.id)
-
-await member.ban({reason:motivo})
-
-interaction.reply(`🔨 ${user.tag} foi banido`)
-
-if(config[guildId]?.logChannel){
-
-const log = interaction.guild.channels.cache.get(config[guildId].logChannel)
-
-log.send(`🔨 Ban
-Usuário: ${user.tag}
-Motivo: ${motivo}`)
+} catch (error) {
+console.error(error);
 }
 
 }
 
-if(interaction.commandName === "mute"){
+client.once("ready", async () => {
 
-const user = interaction.options.getUser("usuario")
-const tempo = interaction.options.getInteger("tempo")
-const motivo = interaction.options.getString("motivo") || "Sem motivo"
+console.log(`Bot online como ${client.user.tag}`);
 
-const member = interaction.guild.members.cache.get(user.id)
+await registerCommands();
 
-let role = interaction.guild.roles.cache.find(r=>r.name==="Muted")
+});
 
-if(!role){
 
-role = await interaction.guild.roles.create({
-name:"Muted",
-permissions:[]
-})
+client.on("interactionCreate", async interaction => {
 
-interaction.guild.channels.cache.forEach(async c=>{
-await c.permissionOverwrites.create(role,{SendMessages:false})
-})
+if (!interaction.isChatInputCommand()) return;
 
-}
+if (interaction.commandName === "config-logs") {
 
-await member.roles.add(role)
+const canal = interaction.options.getChannel("canal");
 
-interaction.reply(`🔇 ${user.tag} mutado por ${tempo} minutos`)
+config.logChannel = canal.id;
 
-if(config[guildId]?.logChannel){
-
-const log = interaction.guild.channels.cache.get(config[guildId].logChannel)
-
-log.send(`🔇 Mute
-Usuário: ${user.tag}
-Tempo: ${tempo} minutos
-Motivo: ${motivo}`)
-}
-
-setTimeout(async ()=>{
-await member.roles.remove(role)
-}, tempo*60000)
+interaction.reply("Canal de logs configurado.");
 
 }
 
-if(interaction.commandName === "unmute"){
 
-const user = interaction.options.getUser("usuario")
+if (interaction.commandName === "mute") {
 
-const member = interaction.guild.members.cache.get(user.id)
+const user = interaction.options.getUser("usuario");
+const tempo = interaction.options.getInteger("tempo");
 
-const role = interaction.guild.roles.cache.find(r=>r.name==="Muted")
+const member = await interaction.guild.members.fetch(user.id);
 
-if(role) await member.roles.remove(role)
+await member.timeout(tempo * 60 * 1000);
 
-interaction.reply(`🔊 ${user.tag} desmutado`)
-}
+interaction.reply(`${user.tag} foi mutado por ${tempo} minutos.`);
 
-})
+if (config.logChannel) {
 
-client.on("messageCreate", async message=>{
+const canal = interaction.guild.channels.cache.get(config.logChannel);
 
-if(message.author.bot) return
-
-const guildId = message.guild.id
-
-const pornSites = [
-"xvideos",
-"pornhub",
-"xnxx",
-"xhamster",
-"redtube"
-]
-
-if(message.content.includes("http")){
-
-for(const site of pornSites){
-
-if(message.content.toLowerCase().includes(site)){
-
-await message.delete().catch(()=>{})
-
-let role = message.guild.roles.cache.find(r=>r.name==="Muted")
-
-if(role){
-
-await message.member.roles.add(role)
-
-setTimeout(()=>{
-message.member.roles.remove(role)
-},86400000)
-
-}
-
-try{
-await message.author.send("🚫 Você enviou link pornográfico e recebeu mute de 1 dia.")
-}catch{}
-
-if(config[guildId]?.logChannel){
-
-const log = message.guild.channels.cache.get(config[guildId].logChannel)
-
-log.send(`🚫 AutoMod
-Usuário: ${message.author.tag}
-Motivo: link pornográfico
-Ação: mute 1 dia`)
-}
+canal.send(`🔇 ${user.tag} foi mutado por ${tempo} minutos.`);
 
 }
 
 }
 
+});
+
+
+client.on("messageCreate", async message => {
+
+if (message.author.bot) return;
+
+const content = message.content.toLowerCase();
+
+const palavraDetectada = bannedWords.find(word => content.includes(word));
+
+if (!palavraDetectada) return;
+
+try {
+
+await message.delete();
+
+const member = message.member;
+
+await member.timeout(24 * 60 * 60 * 1000);
+
+message.channel.send(`${member}, palavra proibida detectada. Você foi mutado por 1 dia.`);
+
+if (config.logChannel) {
+
+const canal = message.guild.channels.cache.get(config.logChannel);
+
+canal.send(`🚨 AutoMod detectou palavra proibida.
+
+Usuário: ${member.user.tag}
+Palavra: ${palavraDetectada}
+Mute: 1 dia`);
+
 }
 
-})
+} catch (err) {
+console.log("Erro no AutoMod:", err);
+}
 
-client.login(process.env.TOKEN)
+});
+
+client.login(TOKEN);
