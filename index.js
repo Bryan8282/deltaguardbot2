@@ -35,12 +35,7 @@ const commands = [
     name: "config",
     description: "Configura o canal de logs do servidor",
     options: [
-      {
-        type: 7, // Channel
-        name: "canal",
-        description: "Escolha o canal de logs",
-        required: true
-      }
+      { type: 7, name: "canal", description: "Escolha o canal de logs", required: true }
     ]
   },
   {
@@ -74,9 +69,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 })();
 
 // ===== Eventos =====
-client.on("ready", () => {
-  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
-});
+client.on("ready", () => console.log(`✅ BOT ONLINE: ${client.user.tag}`));
 
 // ===== AutoMod e Limpeza Automática =====
 const blockedWords = ["estrupado", "estrupada"];
