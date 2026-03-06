@@ -1,169 +1,148 @@
-require("dotenv").config();
+require("dotenv").config()
 
 const { 
 Client, 
 GatewayIntentBits, 
-Partials,
-PermissionsBitField 
-} = require("discord.js");
-
-const mongoose = require("mongoose");
+PermissionsBitField, 
+SlashCommandBuilder, 
+REST, 
+Routes 
+} = require("discord.js")
 
 const client = new Client({
 intents: [
 GatewayIntentBits.Guilds,
 GatewayIntentBits.GuildMessages,
-GatewayIntentBits.GuildMembers,
-GatewayIntentBits.MessageContent
-],
-partials: [Partials.Channel]
-});
+GatewayIntentBits.MessageContent,
+GatewayIntentBits.GuildMembers
+]
+})
 
+const commands = [
 
-// -------------------
-// CONEXÃO MONGODB
-// -------------------
+new SlashCommandBuilder()
+.setName("ping")
+.setDescription("Ver a latência do bot"),
 
-mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log("MongoDB conectado"))
-.catch(err => console.log(err));
+new SlashCommandBuilder()
+.setName("help")
+.setDescription("Ver todos os comandos"),
 
+new SlashCommandBuilder()
+.setName("ban")
+.setDescription("Banir um usuário")
+.addUserOption(option =>
+option.setName("usuario")
+.setDescription("Usuário para banir")
+.setRequired(true))
+.addStringOption(option =>
+option.setName("motivo")
+.setDescription("Motivo do ban")
+.setRequired(false)),
 
-// -------------------
-// BOT ONLINE
-// -------------------
+new SlashCommandBuilder()
+.setName("mute")
+.setDescription("Mutar um usuário")
+.addUserOption(option =>
+option.setName("usuario")
+.setDescription("Usuário para mutar")
+.setRequired(true))
+.addIntegerOption(option =>
+option.setName("tempo")
+.setDescription("Tempo do mute em minutos")
+.setRequired(true))
+.addStringOption(option =>
+option.setName("motivo")
+.setDescription("Motivo do mute")
+.setRequired(false))
 
-client.once("ready", () => {
+].map(command => command.toJSON())
 
-console.log(`Bot online como ${client.user.tag}`);
+client.once("ready", async () => {
 
-});
+console.log(`Bot online como ${client.user.tag}`)
 
+const rest = new REST({ version: "10" }).setToken(process.env.TOKEN)
 
-// -------------------
-// COMANDOS
-// -------------------
+try {
+
+await rest.put(
+Routes.applicationCommands(process.env.CLIENT_ID),
+{ body: commands }
+)
+
+console.log("Comandos registrados com sucesso")
+
+} catch (error) {
+console.error(error)
+}
+
+})
 
 client.on("interactionCreate", async interaction => {
 
-if (!interaction.isChatInputCommand()) return;
+if (!interaction.isChatInputCommand()) return
 
-const { commandName } = interaction;
-
-
-// -------------------
-// PING
-// -------------------
+const { commandName } = interaction
 
 if (commandName === "ping") {
 
-return interaction.reply(`🏓 Pong! ${client.ws.ping}ms`);
+await interaction.reply("🏓 Pong!")
 
 }
-
-
-// -------------------
-// HELP
-// -------------------
 
 if (commandName === "help") {
 
-return interaction.reply({
-
-content:
-`
+await interaction.reply(`
 📜 **Comandos disponíveis**
 
-/ping → Testar bot  
-/ban → Banir membro  
-/kick → Expulsar membro  
-/mute → Mutar membro  
-/help → Lista de comandos
-`,
-ephemeral: true
-
-});
+/ping → Testar o bot  
+/help → Lista de comandos  
+/ban → Banir usuário  
+/mute → Mutar usuário
+`)
 
 }
-
-
-// -------------------
-// BAN
-// -------------------
 
 if (commandName === "ban") {
 
 if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
-return interaction.reply({content:"❌ Sem permissão.",ephemeral:true});
+return interaction.reply({ content: "❌ Você não tem permissão.", ephemeral: true })
 
-const user = interaction.options.getUser("usuario");
-const motivo = interaction.options.getString("motivo") || "Sem motivo";
+const user = interaction.options.getUser("usuario")
+const reason = interaction.options.getString("motivo") || "Sem motivo"
 
-const member = interaction.guild.members.cache.get(user.id);
-
-if (!member)
-return interaction.reply("Usuário não encontrado.");
-
-await member.ban({ reason: motivo });
-
-interaction.reply(`🔨 ${user.tag} foi banido.\nMotivo: ${motivo}`);
-
-}
-
-
-// -------------------
-// KICK
-// -------------------
-
-if (commandName === "kick") {
-
-if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers))
-return interaction.reply({content:"❌ Sem permissão.",ephemeral:true});
-
-const user = interaction.options.getUser("usuario");
-const motivo = interaction.options.getString("motivo") || "Sem motivo";
-
-const member = interaction.guild.members.cache.get(user.id);
+const member = interaction.guild.members.cache.get(user.id)
 
 if (!member)
-return interaction.reply("Usuário não encontrado.");
+return interaction.reply("Usuário não encontrado.")
 
-await member.kick(motivo);
+await member.ban({ reason })
 
-interaction.reply(`👢 ${user.tag} foi expulso.\nMotivo: ${motivo}`);
+interaction.reply(`🔨 ${user.tag} foi banido.\nMotivo: ${reason}`)
 
 }
-
-
-// -------------------
-// MUTE
-// -------------------
 
 if (commandName === "mute") {
 
 if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
-return interaction.reply({content:"❌ Sem permissão.",ephemeral:true});
+return interaction.reply({ content: "❌ Você não tem permissão.", ephemeral: true })
 
-const user = interaction.options.getUser("usuario");
-const tempo = interaction.options.getInteger("tempo");
-const motivo = interaction.options.getString("motivo") || "Sem motivo";
+const user = interaction.options.getUser("usuario")
+const tempo = interaction.options.getInteger("tempo")
+const reason = interaction.options.getString("motivo") || "Sem motivo"
 
-const member = interaction.guild.members.cache.get(user.id);
+const member = interaction.guild.members.cache.get(user.id)
 
 if (!member)
-return interaction.reply("Usuário não encontrado.");
+return interaction.reply("Usuário não encontrado.")
 
-await member.timeout(tempo * 60 * 1000, motivo);
+await member.timeout(tempo * 60 * 1000, reason)
 
-interaction.reply(`🔇 ${user.tag} foi mutado por ${tempo} minutos.\nMotivo: ${motivo}`);
+interaction.reply(`🔇 ${user.tag} foi mutado por ${tempo} minutos.\nMotivo: ${reason}`)
 
 }
 
-});
+})
 
-
-// -------------------
-// LOGIN BOT
-// -------------------
-
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN)
