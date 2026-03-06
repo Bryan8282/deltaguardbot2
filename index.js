@@ -1,260 +1,199 @@
-require("dotenv").config();
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  SlashCommandBuilder,
-  REST,
-  Routes,
-} = require("discord.js");
+const { Client, GatewayIntentBits, Partials, PermissionsBitField, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const mongoose = require("mongoose");
+require("dotenv").config();
 
-// ====== TRATAMENTO GLOBAL DE ERROS ======
-process.on("unhandledRejection", (err) => {
-  console.error("❌ Promise não tratada:", err);
-});
-process.on("uncaughtException", (err) => {
-  console.error("❌ Exceção não capturada:", err);
-});
-
-// ====== VERIFICAÇÃO DE VARIÁVEIS ======
-if (!process.env.TOKEN || !process.env.CLIENT_ID || !process.env.MONGO_URI) {
-  console.error("🚨 ERRO: Variáveis TOKEN, CLIENT_ID ou MONGO_URI não configuradas!");
-  process.exit(1);
-}
-
-// ====== CLIENT ======
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-  partials: [Partials.Message, Partials.Channel],
-});
-
-// ====== MONGO ======
+// ===== Conexão MongoDB =====
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect("mongodb+srv://deltaadmin:bryanana020925*@deltaguardultra.mongodb.net/DeltaBotDB?retryWrites=true&w=majority")
   .then(() => console.log("✅ Conectado ao MongoDB"))
   .catch((err) => {
     console.error("🚨 Erro ao conectar no MongoDB:", err);
     process.exit(1);
   });
 
-// ====== SCHEMAS ======
+// ===== Schemas =====
 const configSchema = new mongoose.Schema({
   guildId: String,
   logChannel: String,
 });
-
 const Config = mongoose.model("Config", configSchema);
 
-// ====== LISTAS ======
-const palavrasProibidas = ["estrupado", "estrupada"];
-const pornLinks = ["porn", "xvideos", "pornhub", "xnxx", "redtube"];
-const seuID = "1465203429864374476"; // Você será marcado nas logs
+// ===== Cliente Discord =====
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers],
+  partials: [Partials.Channel]
+});
 
-// ====== COMANDOS SLASH ======
-const comandos = [
-  new SlashCommandBuilder()
-    .setName("config-logs")
-    .setDescription("Definir canal de logs")
-    .addChannelOption((o) =>
-      o.setName("canal").setDescription("Canal de logs").setRequired(true)
-    ),
-  new SlashCommandBuilder()
-    .setName("ban")
-    .setDescription("Banir usuário")
-    .addUserOption((o) =>
-      o.setName("usuario").setDescription("Usuário").setRequired(true)
-    )
-    .addStringOption((o) =>
-      o.setName("motivo").setDescription("Motivo do ban").setRequired(false)
-    ),
-  new SlashCommandBuilder()
-    .setName("kick")
-    .setDescription("Expulsar usuário")
-    .addUserOption((o) =>
-      o.setName("usuario").setDescription("Usuário").setRequired(true)
-    )
-    .addStringOption((o) =>
-      o.setName("motivo").setDescription("Motivo do kick").setRequired(false)
-    ),
-  new SlashCommandBuilder()
-    .setName("mute")
-    .setDescription("Mutar usuário")
-    .addUserOption((o) =>
-      o.setName("usuario").setDescription("Usuário").setRequired(true)
-    )
-    .addStringOption((o) =>
-      o.setName("tempo").setDescription("Tempo ex: 1d").setRequired(true)
-    )
-    .addStringOption((o) =>
-      o.setName("motivo").setDescription("Motivo").setRequired(false)
-    ),
-  new SlashCommandBuilder()
-    .setName("unmute")
-    .setDescription("Remover mute")
-    .addUserOption((o) =>
-      o.setName("usuario").setDescription("Usuário").setRequired(true)
-    ),
-].map((c) => c.toJSON());
+// ===== Comandos =====
+const commands = [
+  {
+    name: "config",
+    description: "Configura o canal de logs do servidor",
+    options: [
+      {
+        type: 7, // Channel
+        name: "canal",
+        description: "Escolha o canal de logs",
+        required: true
+      }
+    ]
+  },
+  {
+    name: "ban",
+    description: "Bane um usuário",
+    options: [
+      {
+        type: 6, // User
+        name: "usuario",
+        description: "Usuário a ser banido",
+        required: true
+      },
+      {
+        type: 3, // String
+        name: "motivo",
+        description: "Motivo do ban",
+        required: false
+      }
+    ]
+  },
+  {
+    name: "mute",
+    description: "Da mute em um usuário",
+    options: [
+      {
+        type: 6, // User
+        name: "usuario",
+        description: "Usuário a ser mutado",
+        required: true
+      },
+      {
+        type: 3,
+        name: "tempo",
+        description: "Tempo do mute (ex: 1d, 2h)",
+        required: true
+      }
+    ]
+  }
+];
 
-// ====== READY ======
-client.once("ready", async () => {
-  console.log("✅ BOT ONLINE");
-
-  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
+// ===== Registro automático de comandos =====
+const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+(async () => {
   try {
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
-      body: comandos,
-    });
+    console.log("🔄 Registrando comandos...");
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
     console.log("✅ Comandos registrados com sucesso");
-  } catch (err) {
-    console.error("🚨 Erro ao registrar comandos:", err);
+  } catch (error) {
+    console.error(error);
+  }
+})();
+
+// ===== Eventos =====
+client.on("ready", () => {
+  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
+});
+
+// AutoMod e limpeza automática
+const blockedWords = ["estrupado", "estrupada"];
+const pornPatterns = [/https?:\/\/.*\.(?:jpg|png|gif|mp4)/gi];
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+
+  // Checa palavras bloqueadas
+  if (blockedWords.some(word => message.content.toLowerCase().includes(word))) {
+    const muteRole = message.guild.roles.cache.find(r => r.name === "Muted");
+    if (muteRole) await message.member.roles.add(muteRole);
+    message.delete().catch(() => {});
+    const config = await Config.findOne({ guildId: message.guild.id });
+    if (config && config.logChannel) {
+      const logChannel = message.guild.channels.cache.get(config.logChannel);
+      logChannel.send(`${message.member} enviou palavra proibida e foi mutado por 1 dia.`);
+    }
+    return;
+  }
+
+  // Checa links pornográficos
+  if (pornPatterns.some(pattern => pattern.test(message.content))) {
+    const muteRole = message.guild.roles.cache.find(r => r.name === "Muted");
+    if (muteRole) await message.member.roles.add(muteRole);
+    message.delete().catch(() => {});
+    const config = await Config.findOne({ guildId: message.guild.id });
+    if (config && config.logChannel) {
+      const logChannel = message.guild.channels.cache.get(config.logChannel);
+      logChannel.send(`${message.member} enviou link proibido e foi mutado por 1 dia.`);
+    }
+    return;
   }
 });
 
-// ====== INTERAÇÕES ======
+// Comandos de slash
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  try {
-    const config = await Config.findOne({ guildId: interaction.guild.id });
 
-    // ----- CONFIG LOGS -----
-    if (interaction.commandName === "config-logs") {
-      const canal = interaction.options.getChannel("canal");
-      let data = await Config.findOne({ guildId: interaction.guild.id });
-      if (!data) data = new Config({ guildId: interaction.guild.id, logChannel: canal.id });
-      else data.logChannel = canal.id;
-      await data.save();
-      return interaction.reply("✅ Canal de logs configurado");
-    }
+  const { commandName } = interaction;
 
-    // ----- BAN -----
-    if (interaction.commandName === "ban") {
-      const user = interaction.options.getUser("usuario");
-      const motivo = interaction.options.getString("motivo") || "Sem motivo";
-      const member = interaction.guild.members.cache.get(user.id);
-      if (member) await member.ban({ reason: motivo });
-      await interaction.reply(`🔨 Banido: ${user.tag}`);
-      if (config?.logChannel) {
-        const canal = interaction.guild.channels.cache.get(config.logChannel);
-        if (canal) canal.send(`🔨 Ban | ${user.tag} | Motivo: ${motivo}`);
+  if (commandName === "config") {
+    const canal = interaction.options.getChannel("canal");
+    let config = await Config.findOne({ guildId: interaction.guild.id });
+    if (!config) config = new Config({ guildId: interaction.guild.id });
+    config.logChannel = canal.id;
+    await config.save();
+    interaction.reply(`✅ Canal de logs definido: ${canal}`);
+  }
+
+  if (commandName === "ban") {
+    const usuario = interaction.options.getUser("usuario");
+    const motivo = interaction.options.getString("motivo") || "Sem motivo";
+    const member = interaction.guild.members.cache.get(usuario.id);
+    if (member) {
+      // Notificação para você com botões de confirmar
+      const config = await Config.findOne({ guildId: interaction.guild.id });
+      if (config && config.logChannel) {
+        const logChannel = interaction.guild.channels.cache.get(config.logChannel);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`confirmBan_${usuario.id}`).setLabel("Confirmar Ban").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`cancelBan_${usuario.id}`).setLabel("Não Banir").setStyle(ButtonStyle.Secondary)
+        );
+        logChannel.send({ content: `<@1465203429864374476> quer banir ${usuario.tag}`, components: [row] });
       }
-    }
-
-    // ----- KICK -----
-    if (interaction.commandName === "kick") {
-      const user = interaction.options.getUser("usuario");
-      const motivo = interaction.options.getString("motivo") || "Sem motivo";
-      const member = interaction.guild.members.cache.get(user.id);
-      if (member) await member.kick(motivo);
-      await interaction.reply(`👢 Expulso: ${user.tag}`);
-    }
-
-    // ----- MUTE -----
-    if (interaction.commandName === "mute") {
-      const user = interaction.options.getUser("usuario");
-      const tempo = interaction.options.getString("tempo");
-      const motivo = interaction.options.getString("motivo") || "Sem motivo";
-      const member = interaction.guild.members.cache.get(user.id);
-      const cargo = interaction.guild.roles.cache.find((r) => r.name === "Muted");
-      if (member && cargo) {
-        await member.roles.add(cargo);
-        setTimeout(() => member.roles.remove(cargo).catch(() => {}), 86400000); // 1 dia
-      }
-      await interaction.reply(`🔇 Mutado: ${user.tag} por ${tempo}`);
-    }
-
-    // ----- UNMUTE -----
-    if (interaction.commandName === "unmute") {
-      const user = interaction.options.getUser("usuario");
-      const member = interaction.guild.members.cache.get(user.id);
-      const cargo = interaction.guild.roles.cache.find((r) => r.name === "Muted");
-      if (member && cargo) await member.roles.remove(cargo);
-      await interaction.reply(`🔊 Unmute em ${user.tag}`);
-    }
-  } catch (err) {
-    console.error("❌ Erro na interactionCreate:", err);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: "Ocorreu um erro!", ephemeral: true });
+      interaction.reply("⚠️ Pedido de ban enviado para aprovação.");
     } else {
-      await interaction.reply({ content: "Ocorreu um erro!", ephemeral: true });
+      interaction.reply("❌ Usuário não encontrado.");
     }
   }
-});
 
-// ====== MENSAGENS ======
-client.on("messageCreate", async (msg) => {
-  try {
-    if (msg.author.bot || !msg.guild) return;
-    const config = await Config.findOne({ guildId: msg.guild.id });
-    const texto = msg.content.toLowerCase();
-
-    // PALAVRAS PROIBIDAS
-    for (const palavra of palavrasProibidas) {
-      if (texto.includes(palavra)) {
-        await msg.delete().catch(() => {});
-        const cargo = msg.guild.roles.cache.find((r) => r.name === "Muted");
-        const member = msg.guild.members.cache.get(msg.author.id);
-        if (member && cargo) {
-          await member.roles.add(cargo).catch(() => {});
-          setTimeout(() => member.roles.remove(cargo).catch(() => {}), 86400000);
-        }
-        await msg.author.send("Você foi mutado por linguagem proibida").catch(() => {});
-        if (config?.logChannel) {
-          const canal = msg.guild.channels.cache.get(config.logChannel);
-          if (canal) canal.send(`🚨 Automod | Palavra proibida | ${msg.author.tag}`);
-        }
+  if (commandName === "mute") {
+    const usuario = interaction.options.getUser("usuario");
+    const tempo = interaction.options.getString("tempo");
+    const member = interaction.guild.members.cache.get(usuario.id);
+    if (member) {
+      const muteRole = interaction.guild.roles.cache.find(r => r.name === "Muted");
+      if (muteRole) {
+        await member.roles.add(muteRole);
+        interaction.reply(`✅ ${usuario.tag} foi mutado por ${tempo}`);
+        setTimeout(async () => {
+          await member.roles.remove(muteRole);
+          const config = await Config.findOne({ guildId: interaction.guild.id });
+          if (config && config.logChannel) {
+            const logChannel = interaction.guild.channels.cache.get(config.logChannel);
+            logChannel.send(`${usuario.tag} teve o mute removido após ${tempo}`);
+          }
+        }, parseTime(tempo));
+      } else {
+        interaction.reply("❌ Role Muted não encontrada.");
       }
     }
-
-    // LINKS PORNOGRÁFICOS
-    for (const link of pornLinks) {
-      if (texto.includes(link)) {
-        await msg.delete().catch(() => {});
-        const cargo = msg.guild.roles.cache.find((r) => r.name === "Muted");
-        const member = msg.guild.members.cache.get(msg.author.id);
-        if (member && cargo) {
-          await member.roles.add(cargo).catch(() => {});
-          setTimeout(() => member.roles.remove(cargo).catch(() => {}), 86400000);
-        }
-        await msg.author.send("Link pornográfico detectado").catch(() => {});
-        if (config?.logChannel) {
-          const canal = msg.guild.channels.cache.get(config.logChannel);
-          if (canal) canal.send(`🔞 Porn detectado | ${msg.author.tag}`);
-        }
-      }
-    }
-  } catch (err) {
-    console.error("❌ Erro no messageCreate:", err);
   }
 });
 
-// ====== NOVOS MEMBROS ======
-client.on("guildMemberAdd", async (member) => {
-  try {
-    const diasConta = (Date.now() - member.user.createdTimestamp) / 1000 / 60 / 60 / 24;
-    let risco = 0;
-    if (diasConta < 7) risco += 5;
-    if (!member.user.avatar) risco += 2;
-    const config = await Config.findOne({ guildId: member.guild.id });
-    if (config?.logChannel) {
-      const canal = member.guild.channels.cache.get(config.logChannel);
-      if (canal)
-        canal.send(`⚠️ Usuário suspeito entrou
-Usuário: ${member.user.tag}
-Conta criada há: ${Math.floor(diasConta)} dias
-Risco: ${risco}/10
-<@${seuID}>`);
-    }
-  } catch (err) {
-    console.error("❌ Erro no guildMemberAdd:", err);
-  }
-});
+// ===== Função para transformar tempo em milissegundos =====
+function parseTime(time) {
+  const match = time.match(/(\d+)([dhms])/);
+  if (!match) return 0;
+  const [, num, unit] = match;
+  const multipliers = { d: 86400000, h: 3600000, m: 60000, s: 1000 };
+  return parseInt(num) * multipliers[unit];
+}
 
 client.login(process.env.TOKEN);
