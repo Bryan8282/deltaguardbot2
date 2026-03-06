@@ -1,168 +1,307 @@
-const { 
-Client, 
-GatewayIntentBits, 
-Partials, 
-SlashCommandBuilder, 
-REST, 
-Routes, 
-PermissionsBitField 
-} = require("discord.js");
+require("dotenv").config()
 
-const TOKEN = "SEU_TOKEN";
-const CLIENT_ID = "SEU_CLIENT_ID";
+const { 
+Client,
+GatewayIntentBits,
+Partials,
+EmbedBuilder,
+PermissionsBitField,
+ActionRowBuilder,
+ButtonBuilder,
+ButtonStyle,
+SlashCommandBuilder,
+REST,
+Routes
+} = require("discord.js")
+
+const mongoose = require("mongoose")
 
 const client = new Client({
 intents: [
 GatewayIntentBits.Guilds,
+GatewayIntentBits.GuildMembers,
 GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent,
-GatewayIntentBits.GuildMembers
+GatewayIntentBits.MessageContent
 ],
-partials: [Partials.Channel]
-});
+partials: [Partials.Message, Partials.Channel]
+})
 
-let config = {
-logChannel: null
-};
+mongoose.connect(process.env.MONGO_URI)
 
-const bannedWords = [
+const configSchema = new mongoose.Schema({
+guildId: String,
+logChannel: String,
+})
+
+const Config = mongoose.model("Config", configSchema)
+
+const palavrasProibidas = [
 "estrupado",
 "estrupada"
-];
+]
 
-const commands = [
+const pornLinks = [
+"porn",
+"xvideos",
+"pornhub",
+"xnxx",
+"redtube"
+]
+
+const comandos = [
 
 new SlashCommandBuilder()
 .setName("config-logs")
 .setDescription("Definir canal de logs")
-.addChannelOption(option =>
-option.setName("canal")
+.addChannelOption(o =>
+o.setName("canal")
 .setDescription("Canal de logs")
 .setRequired(true)
 ),
 
 new SlashCommandBuilder()
+.setName("ban")
+.setDescription("Banir usuário")
+.addUserOption(o => o.setName("usuario").setRequired(true).setDescription("Usuário"))
+.addStringOption(o => o.setName("motivo").setRequired(false).setDescription("Motivo")),
+
+new SlashCommandBuilder()
+.setName("kick")
+.setDescription("Expulsar usuário")
+.addUserOption(o => o.setName("usuario").setRequired(true).setDescription("Usuário"))
+.addStringOption(o => o.setName("motivo").setRequired(false).setDescription("Motivo")),
+
+new SlashCommandBuilder()
 .setName("mute")
-.setDescription("Mutar um usuário")
-.addUserOption(option =>
-option.setName("usuario")
-.setDescription("Usuário para mutar")
-.setRequired(true)
-)
-.addIntegerOption(option =>
-option.setName("tempo")
-.setDescription("Tempo em minutos")
-.setRequired(true)
-)
+.setDescription("Mutar usuário")
+.addUserOption(o => o.setName("usuario").setRequired(true).setDescription("Usuário"))
+.addStringOption(o => o.setName("tempo").setRequired(true).setDescription("Tempo exemplo 1d"))
+.addStringOption(o => o.setName("motivo").setRequired(false).setDescription("Motivo")),
 
-].map(cmd => cmd.toJSON());
+new SlashCommandBuilder()
+.setName("unmute")
+.setDescription("Remover mute")
+.addUserOption(o => o.setName("usuario").setRequired(true).setDescription("Usuário"))
 
-
-async function registerCommands() {
-
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-try {
-
-console.log("Registrando comandos...");
-
-await rest.put(
-Routes.applicationCommands(CLIENT_ID),
-{ body: commands }
-);
-
-console.log("Comandos registrados automaticamente");
-
-} catch (error) {
-console.error(error);
-}
-
-}
+].map(c => c.toJSON())
 
 client.once("ready", async () => {
 
-console.log(`Bot online como ${client.user.tag}`);
+console.log("BOT ONLINE")
 
-await registerCommands();
+const rest = new REST({version:"10"}).setToken(process.env.TOKEN)
 
-});
+await rest.put(
+Routes.applicationCommands(process.env.CLIENT_ID),
+{ body: comandos }
+)
 
+console.log("Comandos registrados")
+
+})
 
 client.on("interactionCreate", async interaction => {
 
-if (!interaction.isChatInputCommand()) return;
+if(!interaction.isChatInputCommand()) return
 
-if (interaction.commandName === "config-logs") {
+const config = await Config.findOne({guildId:interaction.guild.id})
 
-const canal = interaction.options.getChannel("canal");
+if(interaction.commandName === "config-logs"){
 
-config.logChannel = canal.id;
+const canal = interaction.options.getChannel("canal")
 
-interaction.reply("Canal de logs configurado.");
+let data = await Config.findOne({guildId:interaction.guild.id})
 
-}
+if(!data){
 
+data = new Config({
+guildId: interaction.guild.id,
+logChannel: canal.id
+})
 
-if (interaction.commandName === "mute") {
+}else{
 
-const user = interaction.options.getUser("usuario");
-const tempo = interaction.options.getInteger("tempo");
-
-const member = await interaction.guild.members.fetch(user.id);
-
-await member.timeout(tempo * 60 * 1000);
-
-interaction.reply(`${user.tag} foi mutado por ${tempo} minutos.`);
-
-if (config.logChannel) {
-
-const canal = interaction.guild.channels.cache.get(config.logChannel);
-
-canal.send(`🔇 ${user.tag} foi mutado por ${tempo} minutos.`);
+data.logChannel = canal.id
 
 }
 
+await data.save()
+
+interaction.reply("Canal de logs configurado")
+
 }
 
-});
+if(interaction.commandName === "ban"){
 
+const user = interaction.options.getUser("usuario")
+const motivo = interaction.options.getString("motivo") || "Sem motivo"
 
-client.on("messageCreate", async message => {
+const member = interaction.guild.members.cache.get(user.id)
 
-if (message.author.bot) return;
+await member.ban({reason: motivo})
 
-const content = message.content.toLowerCase();
+interaction.reply(`Banido: ${user.tag}`)
 
-const palavraDetectada = bannedWords.find(word => content.includes(word));
+if(config){
 
-if (!palavraDetectada) return;
+const canal = interaction.guild.channels.cache.get(config.logChannel)
 
-try {
+canal.send(`🔨 Ban | ${user.tag} | Motivo: ${motivo}`)
 
-await message.delete();
+}
 
-const member = message.member;
+}
 
-await member.timeout(24 * 60 * 60 * 1000);
+if(interaction.commandName === "kick"){
 
-message.channel.send(`${member}, palavra proibida detectada. Você foi mutado por 1 dia.`);
+const user = interaction.options.getUser("usuario")
+const motivo = interaction.options.getString("motivo") || "Sem motivo"
 
-if (config.logChannel) {
+const member = interaction.guild.members.cache.get(user.id)
 
-const canal = message.guild.channels.cache.get(config.logChannel);
+await member.kick(motivo)
 
-canal.send(`🚨 AutoMod detectou palavra proibida.
+interaction.reply(`Expulso: ${user.tag}`)
+
+}
+
+if(interaction.commandName === "mute"){
+
+const user = interaction.options.getUser("usuario")
+const tempo = interaction.options.getString("tempo")
+const motivo = interaction.options.getString("motivo") || "Sem motivo"
+
+const member = interaction.guild.members.cache.get(user.id)
+
+const cargo = interaction.guild.roles.cache.find(r => r.name === "Muted")
+
+await member.roles.add(cargo)
+
+interaction.reply(`Mutado: ${user.tag} por ${tempo}`)
+
+setTimeout(()=>{
+
+member.roles.remove(cargo)
+
+}, 86400000)
+
+}
+
+if(interaction.commandName === "unmute"){
+
+const user = interaction.options.getUser("usuario")
+
+const member = interaction.guild.members.cache.get(user.id)
+
+const cargo = interaction.guild.roles.cache.find(r => r.name === "Muted")
+
+await member.roles.remove(cargo)
+
+interaction.reply(`Unmute em ${user.tag}`)
+
+}
+
+})
+
+client.on("messageCreate", async msg => {
+
+if(msg.author.bot) return
+
+const config = await Config.findOne({guildId:msg.guild.id})
+
+const texto = msg.content.toLowerCase()
+
+for(const palavra of palavrasProibidas){
+
+if(texto.includes(palavra)){
+
+msg.delete()
+
+const cargo = msg.guild.roles.cache.find(r=>r.name==="Muted")
+
+const member = msg.guild.members.cache.get(msg.author.id)
+
+member.roles.add(cargo)
+
+setTimeout(()=>{
+member.roles.remove(cargo)
+},86400000)
+
+msg.author.send("Você foi mutado por linguagem proibida")
+
+if(config){
+
+const canal = msg.guild.channels.cache.get(config.logChannel)
+
+canal.send(`🚨 Automod | Palavra proibida | ${msg.author.tag}`)
+
+}
+
+}
+
+}
+
+for(const link of pornLinks){
+
+if(texto.includes(link)){
+
+msg.delete()
+
+const cargo = msg.guild.roles.cache.find(r=>r.name==="Muted")
+
+const member = msg.guild.members.cache.get(msg.author.id)
+
+member.roles.add(cargo)
+
+setTimeout(()=>{
+member.roles.remove(cargo)
+},86400000)
+
+msg.author.send("Link pornográfico detectado")
+
+if(config){
+
+const canal = msg.guild.channels.cache.get(config.logChannel)
+
+canal.send(`🔞 Porn detectado | ${msg.author.tag}`)
+
+}
+
+}
+
+}
+
+})
+
+client.on("guildMemberAdd", async member => {
+
+const contaIdade = Date.now() - member.user.createdTimestamp
+
+const dias = contaIdade / 1000 / 60 / 60 / 24
+
+let risco = 0
+
+if(dias < 7) risco += 5
+
+if(!member.user.avatar) risco += 2
+
+const config = await Config.findOne({guildId:member.guild.id})
+
+if(config){
+
+const canal = member.guild.channels.cache.get(config.logChannel)
+
+canal.send(`⚠️ Usuário suspeito entrou
 
 Usuário: ${member.user.tag}
-Palavra: ${palavraDetectada}
-Mute: 1 dia`);
+Conta criada há: ${Math.floor(dias)} dias
+Risco: ${risco}/10
+
+<@1465203429864374476>
+`)
 
 }
 
-} catch (err) {
-console.log("Erro no AutoMod:", err);
-}
+})
 
-});
-
-client.login(TOKEN);
+client.login(process.env.TOKEN)
