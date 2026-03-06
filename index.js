@@ -20,7 +20,12 @@ const Config = mongoose.model("Config", configSchema);
 
 // ===== Cliente Discord =====
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
+  ],
   partials: [Partials.Channel]
 });
 
@@ -73,7 +78,7 @@ client.on("ready", () => {
   console.log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
-// AutoMod e limpeza automática
+// ===== AutoMod e Limpeza Automática =====
 const blockedWords = ["estrupado", "estrupada"];
 const pornPatterns = [/https?:\/\/.*\.(?:jpg|png|gif|mp4)/gi];
 
@@ -107,7 +112,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// Comandos de slash
+// ===== Comandos de Slash =====
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
