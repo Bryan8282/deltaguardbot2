@@ -1,76 +1,77 @@
-require("dotenv").config();
+require("dotenv").config()
 
-const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { REST, Routes, SlashCommandBuilder } = require("discord.js")
 
 const commands = [
 
 new SlashCommandBuilder()
-.setName("ping")
-.setDescription("Ver latência do bot"),
+.setName("setlog")
+.setDescription("Definir canal de logs")
+.addChannelOption(option =>
+option.setName("canal")
+.setDescription("Canal de logs")
+.setRequired(true)
+),
 
 new SlashCommandBuilder()
-.setName("help")
-.setDescription("Lista de comandos"),
+.setName("setmute")
+.setDescription("Definir cargo de mute")
+.addRoleOption(option =>
+option.setName("cargo")
+.setDescription("Cargo de mute")
+.setRequired(true)
+),
 
 new SlashCommandBuilder()
 .setName("ban")
-.setDescription("Banir membro")
+.setDescription("Banir um usuário")
 .addUserOption(option =>
 option.setName("usuario")
-.setDescription("Usuário para banir")
-.setRequired(true))
+.setDescription("Usuário")
+.setRequired(true)
+)
 .addStringOption(option =>
 option.setName("motivo")
 .setDescription("Motivo do ban")
-.setRequired(false)),
-
-new SlashCommandBuilder()
-.setName("kick")
-.setDescription("Expulsar membro")
-.addUserOption(option =>
-option.setName("usuario")
-.setDescription("Usuário")
-.setRequired(true))
-.addStringOption(option =>
-option.setName("motivo")
-.setDescription("Motivo")
-.setRequired(false)),
+),
 
 new SlashCommandBuilder()
 .setName("mute")
-.setDescription("Mutar membro")
+.setDescription("Mutar usuário")
 .addUserOption(option =>
 option.setName("usuario")
 .setDescription("Usuário")
-.setRequired(true))
+.setRequired(true)
+)
 .addIntegerOption(option =>
 option.setName("tempo")
 .setDescription("Tempo em minutos")
-.setRequired(true))
+.setRequired(true)
+)
 .addStringOption(option =>
 option.setName("motivo")
 .setDescription("Motivo")
-.setRequired(false))
+)
 
-].map(command => command.toJSON());
+].map(command => command.toJSON())
 
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+const rest = new REST({ version: "10" }).setToken(process.env.TOKEN)
 
-(async () => {
+;(async () => {
 
 try {
 
-console.log("Registrando comandos...");
+console.log("Registrando comandos...")
 
 await rest.put(
 Routes.applicationCommands(process.env.CLIENT_ID),
 { body: commands }
-);
+)
 
-console.log("Comandos registrados!");
+console.log("Comandos registrados!")
 
 } catch (error) {
-console.error(error);
+console.error(error)
 }
 
-})();
+})()
