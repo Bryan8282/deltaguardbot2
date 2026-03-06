@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, PermissionsBitField, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { Client, GatewayIntentBits, Partials, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const mongoose = require("mongoose");
 require("dotenv").config();
 
@@ -42,36 +42,16 @@ const commands = [
     name: "ban",
     description: "Bane um usuário",
     options: [
-      {
-        type: 6, // User
-        name: "usuario",
-        description: "Usuário a ser banido",
-        required: true
-      },
-      {
-        type: 3, // String
-        name: "motivo",
-        description: "Motivo do ban",
-        required: false
-      }
+      { type: 6, name: "usuario", description: "Usuário a ser banido", required: true },
+      { type: 3, name: "motivo", description: "Motivo do ban", required: false }
     ]
   },
   {
     name: "mute",
     description: "Da mute em um usuário",
     options: [
-      {
-        type: 6, // User
-        name: "usuario",
-        description: "Usuário a ser mutado",
-        required: true
-      },
-      {
-        type: 3,
-        name: "tempo",
-        description: "Tempo do mute (ex: 1d, 2h)",
-        required: true
-      }
+      { type: 6, name: "usuario", description: "Usuário a ser mutado", required: true },
+      { type: 3, name: "tempo", description: "Tempo do mute (ex: 1d, 2h)", required: true }
     ]
   }
 ];
@@ -130,7 +110,6 @@ client.on("messageCreate", async (message) => {
 // Comandos de slash
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-
   const { commandName } = interaction;
 
   if (commandName === "config") {
@@ -147,7 +126,6 @@ client.on("interactionCreate", async (interaction) => {
     const motivo = interaction.options.getString("motivo") || "Sem motivo";
     const member = interaction.guild.members.cache.get(usuario.id);
     if (member) {
-      // Notificação para você com botões de confirmar
       const config = await Config.findOne({ guildId: interaction.guild.id });
       if (config && config.logChannel) {
         const logChannel = interaction.guild.channels.cache.get(config.logChannel);
@@ -187,7 +165,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ===== Função para transformar tempo em milissegundos =====
+// ===== Função para converter tempo em milissegundos =====
 function parseTime(time) {
   const match = time.match(/(\d+)([dhms])/);
   if (!match) return 0;
