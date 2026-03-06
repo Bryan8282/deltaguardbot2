@@ -3,11 +3,10 @@ require("dotenv").config()
 const { 
 Client, 
 GatewayIntentBits, 
-PermissionsBitField, 
-SlashCommandBuilder, 
-REST, 
-Routes 
+PermissionsBitField 
 } = require("discord.js")
+
+const mongoose = require("mongoose")
 
 const client = new Client({
 intents: [
@@ -18,130 +17,212 @@ GatewayIntentBits.GuildMembers
 ]
 })
 
-const commands = [
+mongoose.connect(process.env.MONGO)
 
-new SlashCommandBuilder()
-.setName("ping")
-.setDescription("Ver a latência do bot"),
+const configSchema = new mongoose.Schema({
+guildId: String,
+logChannel: String,
+muteRole: String
+})
 
-new SlashCommandBuilder()
-.setName("help")
-.setDescription("Ver todos os comandos"),
+const Config = mongoose.model("Config", configSchema)
 
-new SlashCommandBuilder()
-.setName("ban")
-.setDescription("Banir um usuário")
-.addUserOption(option =>
-option.setName("usuario")
-.setDescription("Usuário para banir")
-.setRequired(true))
-.addStringOption(option =>
-option.setName("motivo")
-.setDescription("Motivo do ban")
-.setRequired(false)),
+client.once("ready", () => {
+console.log(`Bot online: ${client.user.tag}`)
+})
 
-new SlashCommandBuilder()
-.setName("mute")
-.setDescription("Mutar um usuário")
-.addUserOption(option =>
-option.setName("usuario")
-.setDescription("Usuário para mutar")
-.setRequired(true))
-.addIntegerOption(option =>
-option.setName("tempo")
-.setDescription("Tempo do mute em minutos")
-.setRequired(true))
-.addStringOption(option =>
-option.setName("motivo")
-.setDescription("Motivo do mute")
-.setRequired(false))
+/* ============================= */
+/* SISTEMA DE CONFIGURAÇÃO */
+/* ============================= */
 
-].map(command => command.toJSON())
+client.on("interactionCreate", async (interaction) => {
 
-client.once("ready", async () => {
+if (!interaction.isChatInputCommand()) return
 
-console.log(`Bot online como ${client.user.tag}`)
+const config = await Config.findOne({ guildId: interaction.guild.id })
 
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN)
+if (interaction.commandName === "setlog") {
 
-try {
+if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
+return interaction.reply({ content: "Sem permissão.", ephemeral: true })
 
-await rest.put(
-Routes.applicationCommands(process.env.CLIENT_ID),
-{ body: commands }
+const canal = interaction.options.getChannel("canal")
+
+await Config.findOneAndUpdate(
+{ guildId: interaction.guild.id },
+{ logChannel: canal.id },
+{ upsert: true }
 )
 
-console.log("Comandos registrados com sucesso")
+interaction.reply(`✅ Canal de logs definido para ${canal}`)
 
-} catch (error) {
-console.error(error)
+}
+
+if (interaction.commandName === "setmute") {
+
+if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
+return interaction.reply({ content: "Sem permissão.", ephemeral: true })
+
+const cargo = interaction.options.getRole("cargo")
+
+await Config.findOneAndUpdate(
+{ guildId: interaction.guild.id },
+{ muteRole: cargo.id },
+{ upsert: true }
+)
+
+interaction.reply(`✅ Cargo de mute definido para ${cargo}`)
+}
+
+/* ============================= */
+/* BAN */
+/* ============================= */
+
+if (interaction.commandName === "ban") {
+
+const user = interaction.options.getUser("usuario")
+const motivo = interaction.options.getString("motivo") || "Sem motivo"
+
+const member = interaction.guild.members.cache.get(user.id)
+
+await member.ban({ reason: motivo })
+
+interaction.reply(`🔨 ${user.tag} foi banido.`)
+
+if (config?.logChannel) {
+
+const log = interaction.guild.channels.cache.get(config.logChannel)
+
+log.send(`🔨 **BAN**
+Usuário: ${user.tag}
+Moderador: ${interaction.user.tag}
+Motivo: ${motivo}`)
+}
+
+}
+
+/* ============================= */
+/* MUTE */
+/* ============================= */
+
+if (interaction.commandName === "mute") {
+
+const user = interaction.options.getUser("usuario")
+const tempo = interaction.options.getInteger("tempo")
+const motivo = interaction.options.getString("motivo") || "Sem motivo"
+
+const member = interaction.guild.members.cache.get(user.id)
+
+await member.roles.add(config.muteRole)
+
+interaction.reply(`🔇 ${user.tag} mutado por ${tempo} minutos.`)
+
+setTimeout(async () => {
+await member.roles.remove(config.muteRole)
+}, tempo * 60000)
+
+if (config?.logChannel) {
+
+const log = interaction.guild.channels.cache.get(config.logChannel)
+
+log.send(`🔇 **MUTE**
+Usuário: ${user.tag}
+Moderador: ${interaction.user.tag}
+Tempo: ${tempo} minutos
+Motivo: ${motivo}`)
+}
+
 }
 
 })
 
-client.on("interactionCreate", async interaction => {
+/* ============================= */
+/* AUTOMOD PORNOGRAFIA */
+/* ============================= */
 
-if (!interaction.isChatInputCommand()) return
+client.on("messageCreate", async (message) => {
 
-const { commandName } = interaction
+if (message.author.bot) return
 
-if (commandName === "ping") {
+const config = await Config.findOne({ guildId: message.guild.id })
 
-await interaction.reply("🏓 Pong!")
+const pornWords = [
+"xvideos",
+"pornhub",
+"xhamster",
+"redtube",
+"xnxx"
+]
+
+if (message.content.includes("http")) {
+
+for (let word of pornWords) {
+
+if (message.content.toLowerCase().includes(word)) {
+
+await message.delete().catch(() => {})
+
+if (!config?.muteRole) return
+
+await message.member.roles.add(config.muteRole)
+
+setTimeout(async () => {
+await message.member.roles.remove(config.muteRole)
+}, 86400000)
+
+try {
+await message.author.send(
+"🚫 Você enviou um link pornográfico e recebeu mute de 1 dia."
+)
+} catch {}
+
+if (config?.logChannel) {
+
+const log = message.guild.channels.cache.get(config.logChannel)
+
+log.send(`🚫 **AutoMod**
+Usuário: ${message.author.tag}
+Ação: Mute 1 dia
+Motivo: Link pornográfico`)
+}
 
 }
 
-if (commandName === "help") {
-
-await interaction.reply(`
-📜 **Comandos disponíveis**
-
-/ping → Testar o bot  
-/help → Lista de comandos  
-/ban → Banir usuário  
-/mute → Mutar usuário
-`)
+}
 
 }
 
-if (commandName === "ban") {
+})
 
-if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
-return interaction.reply({ content: "❌ Você não tem permissão.", ephemeral: true })
+/* ============================= */
+/* LOG DE ENTRADA */
+/* ============================= */
 
-const user = interaction.options.getUser("usuario")
-const reason = interaction.options.getString("motivo") || "Sem motivo"
+client.on("guildMemberAdd", async (member) => {
 
-const member = interaction.guild.members.cache.get(user.id)
+const config = await Config.findOne({ guildId: member.guild.id })
 
-if (!member)
-return interaction.reply("Usuário não encontrado.")
+if (!config?.logChannel) return
 
-await member.ban({ reason })
+const log = member.guild.channels.cache.get(config.logChannel)
 
-interaction.reply(`🔨 ${user.tag} foi banido.\nMotivo: ${reason}`)
+log.send(`👤 ${member.user.tag} entrou no servidor.`)
 
-}
+})
 
-if (commandName === "mute") {
+/* ============================= */
+/* LOG DE SAÍDA */
+/* ============================= */
 
-if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
-return interaction.reply({ content: "❌ Você não tem permissão.", ephemeral: true })
+client.on("guildMemberRemove", async (member) => {
 
-const user = interaction.options.getUser("usuario")
-const tempo = interaction.options.getInteger("tempo")
-const reason = interaction.options.getString("motivo") || "Sem motivo"
+const config = await Config.findOne({ guildId: member.guild.id })
 
-const member = interaction.guild.members.cache.get(user.id)
+if (!config?.logChannel) return
 
-if (!member)
-return interaction.reply("Usuário não encontrado.")
+const log = member.guild.channels.cache.get(config.logChannel)
 
-await member.timeout(tempo * 60 * 1000, reason)
-
-interaction.reply(`🔇 ${user.tag} foi mutado por ${tempo} minutos.\nMotivo: ${reason}`)
-
-}
+log.send(`👋 ${member.user.tag} saiu do servidor.`)
 
 })
 
